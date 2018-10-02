@@ -4,7 +4,6 @@ Exposes regular REST commands as services.
 For more details about this platform, please refer to the documentation at
 https://home-assistant.io/components/hassio/
 """
-import asyncio
 from datetime import timedelta
 import logging
 import os
@@ -27,6 +26,8 @@ _LOGGER = logging.getLogger(__name__)
 
 DOMAIN = 'hassio'
 DEPENDENCIES = ['http']
+STORAGE_KEY = DOMAIN
+STORAGE_VERSION = 1
 
 CONF_FRONTEND_REPO = 'development_repo'
 
@@ -132,21 +133,19 @@ def is_hassio(hass):
 
 
 @bind_hass
-@asyncio.coroutine
-def async_check_config(hass):
+async def async_check_config(hass):
     """Check configuration over Hass.io API."""
     hassio = hass.data[DOMAIN]
-    result = yield from hassio.check_homeassistant_config()
+    result = await hassio.check_homeassistant_config()
 
     if not result:
         return "Hass.io config check API error"
-    elif result['result'] == "error":
+    if result['result'] == "error":
         return result['message']
     return None
 
 
-@asyncio.coroutine
-def async_setup(hass, config):
+async def async_setup(hass, config):
     """Set up the Hass.io component."""
     try:
         host = os.environ['HASSIO']
@@ -163,9 +162,27 @@ def async_setup(hass, config):
     websession = hass.helpers.aiohttp_client.async_get_clientsession()
     hass.data[DOMAIN] = hassio = HassIO(hass.loop, websession, host)
 
-    if not (yield from hassio.is_connected()):
+    if not await hassio.is_connected():
         _LOGGER.error("Not connected with Hass.io")
         return False
+
+    store = hass.helpers.storage.Store(STORAGE_VERSION, STORAGE_KEY)
+    data = await store.async_load()
+
+    if data is None:
+        data = {}
+
+    refresh_token = None
+    if 'hassio_user' in data:
+        user = await hass.auth.async_get_user(data['hassio_user'])
+        if user and user.refresh_tokens:
+            refresh_token = list(user.refresh_tokens.values())[0]
+
+    if refresh_token is None:
+        user = await hass.auth.async_create_system_user('Hass.io')
+        refresh_token = await hass.auth.async_create_refresh_token(user)
+        data['hassio_user'] = user.id
+        await store.async_save(data)
 
     # This overrides the normal API call that would be forwarded
     development_repo = config.get(DOMAIN, {}).get(CONF_FRONTEND_REPO)
@@ -177,7 +194,7 @@ def async_setup(hass, config):
     hass.http.register_view(HassIOView(host, websession))
 
     if 'frontend' in hass.config.components:
-        yield from hass.components.panel_custom.async_register_panel(
+        await hass.components.panel_custom.async_register_panel(
             frontend_url_path='hassio',
             webcomponent_name='hassio-main',
             sidebar_title='Hass.io',
@@ -186,14 +203,18 @@ def async_setup(hass, config):
             embed_iframe=True,
         )
 
-    if 'http' in config:
-        yield from hassio.update_hass_api(config['http'])
+    # Temporary. No refresh token tells supervisor to use API password.
+    if hass.auth.active:
+        token = refresh_token.token
+    else:
+        token = None
+
+    await hassio.update_hass_api(config.get('http', {}), token)
 
     if 'homeassistant' in config:
-        yield from hassio.update_hass_timezone(config['homeassistant'])
+        await hassio.update_hass_timezone(config['homeassistant'])
 
-    @asyncio.coroutine
-    def async_service_handler(service):
+    async def async_service_handler(service):
         """Handle service calls for Hass.io."""
         api_command = MAP_SERVICE_API[service.service][0]
         data = service.data.copy()
@@ -208,7 +229,7 @@ def async_setup(hass, config):
             payload = data
 
         # Call API
-        ret = yield from hassio.send_command(
+        ret = await hassio.send_command(
             api_command.format(addon=addon, snapshot=snapshot),
             payload=payload, timeout=MAP_SERVICE_API[service.service][2]
         )
@@ -220,10 +241,9 @@ def async_setup(hass, config):
         hass.services.async_register(
             DOMAIN, service, async_service_handler, schema=settings[1])
 
-    @asyncio.coroutine
-    def update_homeassistant_version(now):
+    async def update_homeassistant_version(now):
         """Update last available Home Assistant version."""
-        data = yield from hassio.get_homeassistant_info()
+        data = await hassio.get_homeassistant_info()
         if data:
             hass.data[DATA_HOMEASSISTANT_VERSION] = data['last_version']
 
@@ -231,16 +251,15 @@ def async_setup(hass, config):
             update_homeassistant_version, utcnow() + HASSIO_UPDATE_INTERVAL)
 
     # Fetch last version
-    yield from update_homeassistant_version(None)
+    await update_homeassistant_version(None)
 
-    @asyncio.coroutine
-    def async_handle_core_service(call):
+    async def async_handle_core_service(call):
         """Service handler for handling core services."""
         if call.service == SERVICE_HOMEASSISTANT_STOP:
-            yield from hassio.stop_homeassistant()
+            await hassio.stop_homeassistant()
             return
 
-        error = yield from async_check_config(hass)
+        error = await async_check_config(hass)
         if error:
             _LOGGER.error(error)
             hass.components.persistent_notification.async_create(
@@ -249,7 +268,7 @@ def async_setup(hass, config):
             return
 
         if call.service == SERVICE_HOMEASSISTANT_RESTART:
-            yield from hassio.restart_homeassistant()
+            await hassio.restart_homeassistant()
 
     # Mock core services
     for service in (SERVICE_HOMEASSISTANT_STOP, SERVICE_HOMEASSISTANT_RESTART,

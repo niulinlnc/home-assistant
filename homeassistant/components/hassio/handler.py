@@ -23,10 +23,9 @@ X_HASSIO = 'X-HASSIO-KEY'
 
 def _api_bool(funct):
     """Return a boolean."""
-    @asyncio.coroutine
-    def _wrapper(*argv, **kwargs):
+    async def _wrapper(*argv, **kwargs):
         """Wrap function."""
-        data = yield from funct(*argv, **kwargs)
+        data = await funct(*argv, **kwargs)
         return data and data['result'] == "ok"
 
     return _wrapper
@@ -34,10 +33,9 @@ def _api_bool(funct):
 
 def _api_data(funct):
     """Return data of an api."""
-    @asyncio.coroutine
-    def _wrapper(*argv, **kwargs):
+    async def _wrapper(*argv, **kwargs):
         """Wrap function."""
-        data = yield from funct(*argv, **kwargs)
+        data = await funct(*argv, **kwargs)
         if data and data['result'] == "ok":
             return data['data']
         return None
@@ -45,7 +43,7 @@ def _api_data(funct):
     return _wrapper
 
 
-class HassIO(object):
+class HassIO:
     """Small API wrapper for Hass.io."""
 
     def __init__(self, loop, websession, ip):
@@ -94,24 +92,23 @@ class HassIO(object):
         return self.send_command("/homeassistant/check", timeout=300)
 
     @_api_bool
-    def update_hass_api(self, http_config):
-        """Update Home Assistant API data on Hass.io.
-
-        This method return a coroutine.
-        """
+    async def update_hass_api(self, http_config, refresh_token):
+        """Update Home Assistant API data on Hass.io."""
         port = http_config.get(CONF_SERVER_PORT) or SERVER_PORT
         options = {
             'ssl': CONF_SSL_CERTIFICATE in http_config,
             'port': port,
             'password': http_config.get(CONF_API_PASSWORD),
             'watchdog': True,
+            'refresh_token': refresh_token,
         }
 
         if CONF_SERVER_HOST in http_config:
             options['watchdog'] = False
             _LOGGER.warning("Don't use 'server_host' options with Hass.io")
 
-        return self.send_command("/homeassistant/options", payload=options)
+        return await self.send_command("/homeassistant/options",
+                                       payload=options)
 
     @_api_bool
     def update_hass_timezone(self, core_config):
@@ -123,15 +120,15 @@ class HassIO(object):
             'timezone': core_config.get(CONF_TIME_ZONE)
         })
 
-    @asyncio.coroutine
-    def send_command(self, command, method="post", payload=None, timeout=10):
+    async def send_command(self, command, method="post", payload=None,
+                           timeout=10):
         """Send API command to Hass.io.
 
         This method is a coroutine.
         """
         try:
             with async_timeout.timeout(timeout, loop=self.loop):
-                request = yield from self.websession.request(
+                request = await self.websession.request(
                     method, "http://{}{}".format(self._ip, command),
                     json=payload, headers={
                         X_HASSIO: os.environ.get('HASSIO_TOKEN', "")
@@ -142,7 +139,7 @@ class HassIO(object):
                         "%s return code %d.", command, request.status)
                     return None
 
-                answer = yield from request.json()
+                answer = await request.json()
                 return answer
 
         except asyncio.TimeoutError:
