@@ -103,12 +103,12 @@ def test_add_entry_calls_setup_entry(hass, manager):
         hass, 'comp',
         MockModule('comp', async_setup_entry=mock_setup_entry))
 
-    class TestFlow(data_entry_flow.FlowHandler):
+    class TestFlow(config_entries.ConfigFlow):
 
         VERSION = 1
 
         @asyncio.coroutine
-        def async_step_init(self, user_input=None):
+        def async_step_user(self, user_input=None):
             return self.async_create_entry(
                 title='title',
                 data={
@@ -116,7 +116,8 @@ def test_add_entry_calls_setup_entry(hass, manager):
                 })
 
     with patch.dict(config_entries.HANDLERS, {'comp': TestFlow, 'beer': 5}):
-        yield from manager.flow.async_init('comp')
+        yield from manager.flow.async_init(
+            'comp', context={'source': config_entries.SOURCE_USER})
         yield from hass.async_block_till_done()
 
     assert len(mock_setup_entry.mock_calls) == 1
@@ -158,11 +159,12 @@ async def test_saving_and_loading(hass):
         hass, 'test',
         MockModule('test', async_setup_entry=lambda *args: mock_coro(True)))
 
-    class TestFlow(data_entry_flow.FlowHandler):
+    class TestFlow(config_entries.ConfigFlow):
         VERSION = 5
+        CONNECTION_CLASS = config_entries.CONN_CLASS_LOCAL_POLL
 
         @asyncio.coroutine
-        def async_step_init(self, user_input=None):
+        def async_step_user(self, user_input=None):
             return self.async_create_entry(
                 title='Test Title',
                 data={
@@ -171,13 +173,15 @@ async def test_saving_and_loading(hass):
             )
 
     with patch.dict(config_entries.HANDLERS, {'test': TestFlow}):
-        await hass.config_entries.flow.async_init('test')
+        await hass.config_entries.flow.async_init(
+            'test', context={'source': config_entries.SOURCE_USER})
 
-    class Test2Flow(data_entry_flow.FlowHandler):
+    class Test2Flow(config_entries.ConfigFlow):
         VERSION = 3
+        CONNECTION_CLASS = config_entries.CONN_CLASS_CLOUD_PUSH
 
         @asyncio.coroutine
-        def async_step_init(self, user_input=None):
+        def async_step_user(self, user_input=None):
             return self.async_create_entry(
                 title='Test 2 Title',
                 data={
@@ -187,7 +191,8 @@ async def test_saving_and_loading(hass):
 
     with patch('homeassistant.config_entries.HANDLERS.get',
                return_value=Test2Flow):
-        await hass.config_entries.flow.async_init('test')
+        await hass.config_entries.flow.async_init(
+            'test', context={'source': config_entries.SOURCE_USER})
 
     # To trigger the call_later
     async_fire_time_changed(hass, dt.utcnow() + timedelta(seconds=1))
@@ -206,6 +211,7 @@ async def test_saving_and_loading(hass):
         assert orig.title == loaded.title
         assert orig.data == loaded.data
         assert orig.source == loaded.source
+        assert orig.connection_class == loaded.connection_class
 
 
 async def test_forward_entry_sets_up_component(hass):
@@ -228,7 +234,7 @@ async def test_forward_entry_sets_up_component(hass):
 
 
 async def test_forward_entry_does_not_setup_entry_if_setup_fails(hass):
-    """Test we do not setup entry if component setup fails."""
+    """Test we do not set up entry if component setup fails."""
     entry = MockConfigEntry(domain='original')
 
     mock_setup = MagicMock(return_value=mock_coro(False))
@@ -249,7 +255,7 @@ async def test_discovery_notification(hass):
     loader.set_component(hass, 'test', MockModule('test'))
     await async_setup_component(hass, 'persistent_notification', {})
 
-    class TestFlow(data_entry_flow.FlowHandler):
+    class TestFlow(config_entries.ConfigFlow):
         VERSION = 5
 
         async def async_step_discovery(self, user_input=None):
@@ -266,7 +272,7 @@ async def test_discovery_notification(hass):
 
     with patch.dict(config_entries.HANDLERS, {'test': TestFlow}):
         result = await hass.config_entries.flow.async_init(
-            'test', source=data_entry_flow.SOURCE_DISCOVERY)
+            'test', context={'source': config_entries.SOURCE_DISCOVERY})
 
     await hass.async_block_till_done()
     state = hass.states.get('persistent_notification.config_entry_discovery')
@@ -286,7 +292,7 @@ async def test_discovery_notification_not_created(hass):
     loader.set_component(hass, 'test', MockModule('test'))
     await async_setup_component(hass, 'persistent_notification', {})
 
-    class TestFlow(data_entry_flow.FlowHandler):
+    class TestFlow(config_entries.ConfigFlow):
         VERSION = 5
 
         async def async_step_discovery(self, user_input=None):
@@ -294,7 +300,7 @@ async def test_discovery_notification_not_created(hass):
 
     with patch.dict(config_entries.HANDLERS, {'test': TestFlow}):
         await hass.config_entries.flow.async_init(
-            'test', source=data_entry_flow.SOURCE_DISCOVERY)
+            'test', context={'source': config_entries.SOURCE_DISCOVERY})
 
     await hass.async_block_till_done()
     state = hass.states.get('persistent_notification.config_entry_discovery')

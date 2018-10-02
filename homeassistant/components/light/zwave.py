@@ -12,7 +12,7 @@ from homeassistant.components.light import (
     ATTR_TRANSITION, SUPPORT_BRIGHTNESS, SUPPORT_COLOR_TEMP, SUPPORT_COLOR,
     SUPPORT_TRANSITION, SUPPORT_WHITE_VALUE, DOMAIN, Light)
 from homeassistant.components import zwave
-from homeassistant.components.zwave import async_setup_platform  # noqa # pylint: disable=unused-import
+from homeassistant.components.zwave import async_setup_platform  # noqa pylint: disable=unused-import
 from homeassistant.const import STATE_OFF, STATE_ON
 import homeassistant.util.color as color_util
 
@@ -61,6 +61,16 @@ def brightness_state(value):
     if value.data > 0:
         return round((value.data / 99) * 255), STATE_ON
     return 0, STATE_OFF
+
+
+def byte_to_zwave_brightness(value):
+    """Convert brightness in 0-255 scale to 0-99 scale.
+
+    `value` -- (int) Brightness byte value from 0-255.
+    """
+    if value > 0:
+        return max(1, int((value / 255) * 99))
+    return 0
 
 
 def ct_to_hs(temp):
@@ -187,7 +197,7 @@ class ZwaveDimmer(zwave.ZWaveDeviceEntity, Light):
         # brightness. Level 255 means to set it to previous value.
         if ATTR_BRIGHTNESS in kwargs:
             self._brightness = kwargs[ATTR_BRIGHTNESS]
-            brightness = int((self._brightness / 255) * 99)
+            brightness = byte_to_zwave_brightness(self._brightness)
         else:
             brightness = 255
 

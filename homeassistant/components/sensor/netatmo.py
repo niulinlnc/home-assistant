@@ -64,7 +64,7 @@ PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend({
 })
 
 
-def setup_platform(hass, config, add_devices, discovery_info=None):
+def setup_platform(hass, config, add_entities, discovery_info=None):
     """Set up the available Netatmo weather sensors."""
     netatmo = hass.components.netatmo
     data = NetAtmoData(netatmo.NETATMO_AUTH, config.get(CONF_STATION, None))
@@ -95,7 +95,7 @@ def setup_platform(hass, config, add_devices, discovery_info=None):
     except pyatmo.NoDevice:
         return None
 
-    add_devices(dev, True)
+    add_entities(dev, True)
 
 
 class NetAtmoSensor(Entity):
@@ -287,7 +287,7 @@ class NetAtmoSensor(Entity):
                 self._state = "Full"
 
 
-class NetAtmoData(object):
+class NetAtmoData:
     """Get the latest data from NetAtmo."""
 
     def __init__(self, auth, station):
@@ -317,7 +317,11 @@ class NetAtmoData(object):
 
         try:
             import pyatmo
-            self.station_data = pyatmo.WeatherStationData(self.auth)
+            try:
+                self.station_data = pyatmo.WeatherStationData(self.auth)
+            except TypeError:
+                _LOGGER.error("Failed to connect to NetAtmo")
+                return  # finally statement will be executed
 
             if self.station is not None:
                 self.data = self.station_data.lastData(
@@ -340,7 +344,7 @@ class NetAtmoData(object):
                         # Never hammer the NetAtmo API more than
                         # twice per update interval
                         newinterval = NETATMO_UPDATE_INTERVAL / 2
-                    _LOGGER.warning(
+                    _LOGGER.info(
                         "NetAtmo refresh interval reset to %d seconds",
                         newinterval)
             else:

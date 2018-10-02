@@ -11,10 +11,10 @@ import logging
 from aiohttp import web
 from aiohttp.web_exceptions import HTTPUnauthorized, HTTPInternalServerError
 
-import homeassistant.remote as rem
 from homeassistant.components.http.ban import process_success_login
-from homeassistant.core import is_callback
+from homeassistant.core import Context, is_callback
 from homeassistant.const import CONTENT_TYPE_JSON
+from homeassistant.helpers.json import JSONEncoder
 
 from .const import KEY_AUTHENTICATED, KEY_REAL_IP
 
@@ -22,7 +22,7 @@ from .const import KEY_AUTHENTICATED, KEY_REAL_IP
 _LOGGER = logging.getLogger(__name__)
 
 
-class HomeAssistantView(object):
+class HomeAssistantView:
     """Base view for all views."""
 
     url = None
@@ -32,11 +32,19 @@ class HomeAssistantView(object):
     cors_allowed = False
 
     # pylint: disable=no-self-use
+    def context(self, request):
+        """Generate a context from a request."""
+        user = request.get('hass_user')
+        if user is None:
+            return Context()
+
+        return Context(user_id=user.id)
+
     def json(self, result, status_code=200, headers=None):
         """Return a JSON response."""
         try:
             msg = json.dumps(
-                result, sort_keys=True, cls=rem.JSONEncoder).encode('UTF-8')
+                result, sort_keys=True, cls=JSONEncoder).encode('UTF-8')
         except TypeError as err:
             _LOGGER.error('Unable to serialize to JSON: %s\n%s', err, result)
             raise HTTPInternalServerError
@@ -69,15 +77,13 @@ class HomeAssistantView(object):
             handler = request_handler_factory(self, handler)
 
             for url in urls:
-                routes.append(
-                    (method, router.add_route(method, url, handler))
-                )
+                routes.append(router.add_route(method, url, handler))
 
         if not self.cors_allowed:
             return
 
-        for method, route in routes:
-            app['allow_cors'](route, [method.upper()])
+        for route in routes:
+            app['allow_cors'](route)
 
 
 def request_handler_factory(view, handler):
