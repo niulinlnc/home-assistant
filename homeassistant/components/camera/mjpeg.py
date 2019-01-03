@@ -16,7 +16,7 @@ import voluptuous as vol
 
 from homeassistant.const import (
     CONF_NAME, CONF_USERNAME, CONF_PASSWORD, CONF_AUTHENTICATION,
-    HTTP_BASIC_AUTHENTICATION, HTTP_DIGEST_AUTHENTICATION)
+    HTTP_BASIC_AUTHENTICATION, HTTP_DIGEST_AUTHENTICATION, CONF_VERIFY_SSL)
 from homeassistant.components.camera import (PLATFORM_SCHEMA, Camera)
 from homeassistant.helpers.aiohttp_client import (
     async_get_clientsession, async_aiohttp_proxy_web)
@@ -29,6 +29,7 @@ CONF_STILL_IMAGE_URL = 'still_image_url'
 CONTENT_TYPE_HEADER = 'Content-Type'
 
 DEFAULT_NAME = 'Mjpeg Camera'
+DEFAULT_VERIFY_SSL = True
 
 PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend({
     vol.Required(CONF_MJPEG_URL): cv.url,
@@ -38,6 +39,7 @@ PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend({
     vol.Optional(CONF_NAME, default=DEFAULT_NAME): cv.string,
     vol.Optional(CONF_PASSWORD): cv.string,
     vol.Optional(CONF_USERNAME): cv.string,
+    vol.Optional(CONF_VERIFY_SSL, default=DEFAULT_VERIFY_SSL): cv.boolean,
 })
 
 
@@ -60,13 +62,20 @@ async def async_setup_platform(hass, config, async_add_entities,
 def extract_image_from_mjpeg(stream):
     """Take in a MJPEG stream object, return the jpg from it."""
     data = b''
+
     for chunk in stream:
         data += chunk
-        jpg_start = data.find(b'\xff\xd8')
         jpg_end = data.find(b'\xff\xd9')
-        if jpg_start != -1 and jpg_end != -1:
-            jpg = data[jpg_start:jpg_end + 2]
-            return jpg
+
+        if jpg_end == -1:
+            continue
+
+        jpg_start = data.find(b'\xff\xd8')
+
+        if jpg_start == -1:
+            continue
+
+        return data[jpg_start:jpg_end + 2]
 
 
 class MjpegCamera(Camera):
@@ -88,6 +97,7 @@ class MjpegCamera(Camera):
                 self._auth = aiohttp.BasicAuth(
                     self._username, password=self._password
                 )
+        self._verify_ssl = device_info.get(CONF_VERIFY_SSL)
 
     async def async_camera_image(self):
         """Return a still image response from the camera."""
@@ -98,7 +108,10 @@ class MjpegCamera(Camera):
                 self.camera_image)
             return image
 
-        websession = async_get_clientsession(self.hass)
+        websession = async_get_clientsession(
+            self.hass,
+            verify_ssl=self._verify_ssl
+        )
         try:
             with async_timeout.timeout(10, loop=self.hass.loop):
                 response = await websession.get(
@@ -121,7 +134,12 @@ class MjpegCamera(Camera):
             else:
                 auth = HTTPBasicAuth(self._username, self._password)
             req = requests.get(
-                self._mjpeg_url, auth=auth, stream=True, timeout=10)
+                self._mjpeg_url,
+                auth=auth,
+                stream=True,
+                timeout=10,
+                verify=self._verify_ssl
+            )
         else:
             req = requests.get(self._mjpeg_url, stream=True, timeout=10)
 
@@ -137,7 +155,10 @@ class MjpegCamera(Camera):
             return await super().handle_async_mjpeg_stream(request)
 
         # connect to stream
-        websession = async_get_clientsession(self.hass)
+        websession = async_get_clientsession(
+            self.hass,
+            verify_ssl=self._verify_ssl
+        )
         stream_coro = websession.get(self._mjpeg_url, auth=self._auth)
 
         return await async_aiohttp_proxy_web(self.hass, request, stream_coro)

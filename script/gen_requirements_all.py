@@ -46,6 +46,7 @@ TEST_REQUIREMENTS = (
     'coinmarketcap',
     'defusedxml',
     'dsmr_parser',
+    'enturclient',
     'ephem',
     'evohomeclient',
     'feedparser',
@@ -63,9 +64,11 @@ TEST_REQUIREMENTS = (
     'home-assistant-frontend',
     'homematicip',
     'influxdb',
+    'jsonpath',
     'libpurecoollink',
     'libsoundtouch',
     'luftdaten',
+    'mbddns',
     'mficlient',
     'numpy',
     'paho-mqtt',
@@ -91,10 +94,12 @@ TEST_REQUIREMENTS = (
     'pyspcwebgw',
     'python-forecastio',
     'python-nest',
+    'python_awair',
     'pytradfri\\[async\\]',
     'pyunifi',
     'pyupnp-async',
     'pywebpush',
+    'regenmaschine',
     'restrictedpython',
     'rflink',
     'ring_doorbell',
@@ -104,8 +109,10 @@ TEST_REQUIREMENTS = (
     'smhi-pkg',
     'somecomfort',
     'sqlalchemy',
+    'srpenergy',
     'statsd',
     'uvcclient',
+    'vsure',
     'warrant',
     'pythonwhois',
     'wakeonlan',
@@ -140,6 +147,9 @@ enum34==1000000000.0.0
 
 # This is a old unmaintained library and is replaced with pycryptodome
 pycrypto==1000000000.0.0
+
+# Contains code to modify Home Assistant to work around our rules
+python-systemair-savecair==1000000000.0.0
 """
 
 
@@ -200,7 +210,7 @@ def gather_modules():
         for req in module.REQUIREMENTS:
             if req in IGNORE_REQ:
                 continue
-            if '://' in req:
+            if '://' in req and 'pyharmony' not in req:
                 errors.append(
                     "{}[Only pypi dependencies are allowed: {}]".format(
                         package, req))
