@@ -6,13 +6,14 @@ from homeassistant.components.lock import LockDevice
 from . import SmartThingsEntity
 from .const import DATA_BROKERS, DOMAIN
 
-DEPENDENCIES = ['smartthings']
-
 ST_STATE_LOCKED = 'locked'
 ST_LOCK_ATTR_MAP = {
-    'method': 'method',
     'codeId': 'code_id',
+    'codeName': 'code_name',
+    'lockName': 'lock_name',
+    'method': 'method',
     'timeout': 'timeout',
+    'usedCode': 'used_code'
 }
 
 

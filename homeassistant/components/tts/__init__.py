@@ -1,9 +1,4 @@
-"""
-Provide functionality to TTS.
-
-For more details about this component, please refer to the documentation at
-https://home-assistant.io/components/tts/
-"""
+"""Provide functionality to TTS."""
 import asyncio
 import ctypes
 import functools as ft
@@ -22,14 +17,12 @@ from homeassistant.components.media_player.const import (
     ATTR_MEDIA_CONTENT_ID, ATTR_MEDIA_CONTENT_TYPE, MEDIA_TYPE_MUSIC,
     SERVICE_PLAY_MEDIA)
 from homeassistant.components.media_player.const import DOMAIN as DOMAIN_MP
-from homeassistant.const import ATTR_ENTITY_ID
+from homeassistant.const import ATTR_ENTITY_ID, ENTITY_MATCH_ALL
 from homeassistant.core import callback
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import config_per_platform
 import homeassistant.helpers.config_validation as cv
 from homeassistant.setup import async_prepare_setup_platform
-
-REQUIREMENTS = ['mutagen==1.42.0']
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -48,7 +41,6 @@ CONF_BASE_URL = 'base_url'
 DEFAULT_CACHE = True
 DEFAULT_CACHE_DIR = 'tts'
 DEFAULT_TIME_MEMORY = 300
-DEPENDENCIES = ['http']
 DOMAIN = 'tts'
 
 MEM_CACHE_FILENAME = 'filename'
@@ -126,7 +118,7 @@ async def async_setup(hass, config):
 
         async def async_say_handle(service):
             """Service handle for say."""
-            entity_ids = service.data.get(ATTR_ENTITY_ID)
+            entity_ids = service.data.get(ATTR_ENTITY_ID, ENTITY_MATCH_ALL)
             message = service.data.get(ATTR_MESSAGE)
             cache = service.data.get(ATTR_CACHE)
             language = service.data.get(ATTR_LANGUAGE)
@@ -144,10 +136,8 @@ async def async_setup(hass, config):
             data = {
                 ATTR_MEDIA_CONTENT_ID: url,
                 ATTR_MEDIA_CONTENT_TYPE: MEDIA_TYPE_MUSIC,
+                ATTR_ENTITY_ID: entity_ids,
             }
-
-            if entity_ids:
-                data[ATTR_ENTITY_ID] = entity_ids
 
             await hass.services.async_call(
                 DOMAIN_MP, SERVICE_PLAY_MEDIA, data, blocking=True)
