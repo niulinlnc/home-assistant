@@ -14,13 +14,16 @@
                 "data": {
                     "2fa": "2FA pin"
                 },
+                "description": "Leeg",
                 "title": "Twee-factor-authenticatie"
             },
             "user": {
                 "data": {
+                    "authorization_code": "Autorisatiecode (vereist voor handmatige authenticatie)",
                     "email": "E-mailadres",
                     "password": "Wachtwoord"
                 },
+                "description": "Leeg",
                 "title": "Google Hangouts inlog"
             }
         },
